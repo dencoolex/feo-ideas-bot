@@ -1,0 +1,55 @@
+name: Poll Telegram for ideas
+
+on:
+  schedule:
+    - cron: "* * * * *"   # каждую минуту (можно изменить на "*/5 * * * *")
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: python -m pip install --upgrade pip && pip install requests
+
+      - name: Ensure last_update file exists
+        run: |
+          if [ ! -f last_update.txt ]; then
+            echo "1" > last_update.txt
+            git add last_update.txt
+            git commit -m "Create last_update.txt" || echo "no changes"
+            git push || echo "push failed (maybe first run)"
+          fi
+
+      - name: Run poller
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python bot_poller.py
+
+      - name: Commit last_update (if changed)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add last_update.txt || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update last_update (telegram poller)" || true
+            git remote set-url origin "https://${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git push origin HEAD || echo "Push failed"
+          fi
