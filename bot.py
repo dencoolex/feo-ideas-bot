@@ -27,6 +27,8 @@ WELCOME_HTML = (
     "После отправки <b>админ получит уведомление</b> и ответит при необходимости. ✅"
 )
 
+THANKS_TEXT = "Спасибо за идею! Я передал(а) её админу. ✅"
+
 LONG_POLL_TIMEOUT = 50
 SLEEP_ON_ERROR = 2
 
@@ -129,35 +131,47 @@ def handle_update(update: Dict[str, Any]):
     if not msg or not is_private_chat(msg):
         return
 
-    chat_id = (msg.get("chat") or {}).get("id")
+    chat_id = int((msg.get("chat") or {}).get("id"))
     from_user = msg.get("from") or {}
-    user_id = from_user.get("id")
+    user_id = int(from_user.get("id"))
     username = from_user.get("username") or ""
-    mid = msg.get("message_id")
+    mid = int(msg.get("message_id"))
     mtype = message_type(msg)
+    text = (msg.get("text") or "").strip()
 
     print(f"[update] user_id={user_id} @{username} chat_id={chat_id} message_id={mid} type={mtype}")
 
-    allowed, warn = anti_flood_check(int(user_id))
+    # /start -> только приветствие, ничего не форвардим
+    if text == "/start":
+        try:
+            send_welcome(chat_id)
+            print("[welcome] sent (on /start)")
+        except Exception as e:
+            print(f"[welcome] error: {e}", file=sys.stderr)
+        return
+
+    allowed, warn = anti_flood_check(user_id)
     if not allowed:
         if warn:
             try:
-                send_text(int(chat_id), warn)
+                send_text(chat_id, warn)
             except Exception as e:
                 print(f"[anti_flood] warn failed: {e}", file=sys.stderr)
         return
 
+    # Форвардим админу любое сообщение (текст/фото/файл/голос и т.д.)
     try:
-        send_welcome(int(chat_id))
-        print("[welcome] sent")
-    except Exception as e:
-        print(f"[welcome] error: {e}", file=sys.stderr)
-
-    try:
-        forward_to_admin(int(chat_id), int(mid))
+        forward_to_admin(chat_id, mid)
         print("[forward] OK -> admin")
     except Exception as e:
         print(f"[forward] error: {e}", file=sys.stderr)
+
+    # И отправляем короткое подтверждение пользователю
+    try:
+        send_text(chat_id, THANKS_TEXT)
+        print("[thanks] sent")
+    except Exception as e:
+        print(f"[thanks] error: {e}", file=sys.stderr)
 
 
 def main():
