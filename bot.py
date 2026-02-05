@@ -1,5 +1,3 @@
-name: Telegram ideas bot
-
 on:
   workflow_dispatch:
 
